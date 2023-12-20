@@ -10,6 +10,8 @@ namespace WapplerSystems\ZabbixClient\Operation;
  */
 
 use TYPO3\CMS\Core\Core\Environment;
+use TYPO3\CMS\Core\Package\PackageInterface;
+use TYPO3\CMS\Core\Package\PackageManager;
 use TYPO3\CMS\Core\SingletonInterface;
 use WapplerSystems\ZabbixClient\Attribute\MonitoringOperation;
 use WapplerSystems\ZabbixClient\OperationResult;
@@ -46,6 +48,9 @@ class GetExtensionList implements IOperation, SingletonInterface
             $extensionList = [];
             foreach ($locations as $scope) {
                 if (in_array($scope, $this->scopes)) {
+                    if ($scope === 'local') {
+                        $extensionList = array_merge($extensionList, $this->getLocalExtensionList($scope));
+                    }
                     $extensionList = array_merge($extensionList, $this->getExtensionListForScope($scope));
                 }
             }
@@ -53,6 +58,32 @@ class GetExtensionList implements IOperation, SingletonInterface
             return new OperationResult(true, $extensionList);
         }
         return new OperationResult(false, 'No extension locations given');
+    }
+
+    /**
+     * Get List of Local installed Extensions.
+     * Local Extensions are in TYPO3 v12 no longer saved in Path /typo3conf/ext/.
+     * So the Packages are get with PackageManager
+     *
+     * @param string $scope
+     * @return array
+     */
+    protected function getLocalExtensionList($scope)
+    {
+        /** @var PackageInterface[] $activeExtensions */
+        $activeExtensions = GeneralUtility::makeInstance(PackageManager::class)->getActivePackages();
+
+        $extensionInfo = [];
+        foreach ($activeExtensions as $extension){
+            if ($extension->getPackageMetaData()->getPackageType() === 'typo3-cms-extension') {
+                $extensionInfo[$extension->getPackageKey()]['ext_key'] = $extension->getPackageKey();
+                $extensionInfo[$extension->getPackageKey()]['installed'] = (bool)\TYPO3\CMS\Core\Utility\ExtensionManagementUtility::isLoaded($extension->getPackageKey());
+                $extensionInfo[$extension->getPackageKey()]['version'] = $extension->getPackageMetaData()->getVersion();
+                $extensionInfo[$extension->getPackageKey()]['scope'][$scope] = $extension->getPackageMetaData()->getVersion();
+            }
+        }
+
+        return $extensionInfo;
     }
 
     /**
@@ -73,6 +104,7 @@ class GetExtensionList implements IOperation, SingletonInterface
                 $path = Environment::getPublicPath() . '/typo3conf/ext/';
                 break;
         }
+
 
         return $path;
     }
